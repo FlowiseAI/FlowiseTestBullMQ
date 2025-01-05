@@ -85,7 +85,7 @@
         "express-basic-auth": "^1.2.1",
         "express-rate-limit": "^6.9.0",
         "flowise-components-bullmq": "workspace:^",
-        "flowise-ui": "workspace:^",
+        "flowise-ui-bullmq": "workspace:^",
         "global-agent": "^3.0.0",
         "http-errors": "^2.0.0",
         "http-status-codes": "^2.3.0",

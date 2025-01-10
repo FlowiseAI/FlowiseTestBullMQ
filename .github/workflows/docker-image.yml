@@ -69,4 +69,4 @@ jobs:
                   # Two tags: one for Docker Hub, one for ECR
                   tags: |
                       flowiseai/flowise-bullmq:${{ github.event.inputs.tag_version }}
-                      <aws_account_id>.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/flowise-bullmq:${{ github.event.inputs.tag_version }}
+                      ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/flowise-bullmq:${{ github.event.inputs.tag_version }}

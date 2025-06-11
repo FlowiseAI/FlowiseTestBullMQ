@@ -1,11 +1,11 @@
 {
     "name": "flowise-bullmq",
-    "version": "3.0.2",
+    "version": "3.0.3",
     "private": true,
     "homepage": "https://flowiseai.com",
     "workspaces": [
         "packages/*",
-        "flowise",
+        "flowise-bullmq",
         "ui",
         "components",
         "api-documentation"

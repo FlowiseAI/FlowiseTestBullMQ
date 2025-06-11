@@ -3,10 +3,6 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useState, useEffect, forwardRef } from 'react'
 import PropTypes from 'prop-types'
 import moment from 'moment'
-import rehypeMathjax from 'rehype-mathjax'
-import rehypeRaw from 'rehype-raw'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
 import axios from 'axios'
 import { cloneDeep } from 'lodash'
 
@@ -42,7 +38,6 @@ import { IconTool, IconDeviceSdCard, IconFileExport, IconEraser, IconX, IconDown
 
 // Project import
 import { MemoizedReactMarkdown } from '@/ui-component/markdown/MemoizedReactMarkdown'
-import { CodeBlock } from '@/ui-component/markdown/CodeBlock'
 import SourceDocDialog from '@/ui-component/dialog/SourceDocDialog'
 import { MultiDropdown } from '@/ui-component/dropdown/MultiDropdown'
 import { StyledButton } from '@/ui-component/button/StyledButton'
@@ -154,9 +149,9 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
     const [sourceDialogProps, setSourceDialogProps] = useState({})
     const [hardDeleteDialogOpen, setHardDeleteDialogOpen] = useState(false)
     const [hardDeleteDialogProps, setHardDeleteDialogProps] = useState({})
-    const [chatTypeFilter, setChatTypeFilter] = useState([])
+    const [chatTypeFilter, setChatTypeFilter] = useState(['INTERNAL', 'EXTERNAL'])
     const [feedbackTypeFilter, setFeedbackTypeFilter] = useState([])
-    const [startDate, setStartDate] = useState(new Date().setMonth(new Date().getMonth() - 1))
+    const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 1)))
     const [endDate, setEndDate] = useState(new Date())
     const [leadEmail, setLeadEmail] = useState('')
 
@@ -167,30 +162,38 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
     let storagePath = ''
 
     const onStartDateSelected = (date) => {
-        setStartDate(date)
+        const updatedDate = new Date(date)
+        updatedDate.setHours(0, 0, 0, 0)
+        setStartDate(updatedDate)
         getChatmessageApi.request(dialogProps.chatflow.id, {
-            startDate: date,
+            startDate: updatedDate,
             endDate: endDate,
-            chatType: chatTypeFilter.length ? chatTypeFilter : undefined
+            chatType: chatTypeFilter.length ? chatTypeFilter : undefined,
+            feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
         })
         getStatsApi.request(dialogProps.chatflow.id, {
-            startDate: date,
+            startDate: updatedDate,
             endDate: endDate,
-            chatType: chatTypeFilter.length ? chatTypeFilter : undefined
+            chatType: chatTypeFilter.length ? chatTypeFilter : undefined,
+            feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
         })
     }
 
     const onEndDateSelected = (date) => {
-        setEndDate(date)
+        const updatedDate = new Date(date)
+        updatedDate.setHours(23, 59, 59, 999)
+        setEndDate(updatedDate)
         getChatmessageApi.request(dialogProps.chatflow.id, {
-            endDate: date,
+            endDate: updatedDate,
             startDate: startDate,
-            chatType: chatTypeFilter.length ? chatTypeFilter : undefined
+            chatType: chatTypeFilter.length ? chatTypeFilter : undefined,
+            feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
         })
         getStatsApi.request(dialogProps.chatflow.id, {
-            endDate: date,
+            endDate: updatedDate,
             startDate: startDate,
-            chatType: chatTypeFilter.length ? chatTypeFilter : undefined
+            chatType: chatTypeFilter.length ? chatTypeFilter : undefined,
+            feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
         })
     }
 
@@ -199,12 +202,14 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
         getChatmessageApi.request(dialogProps.chatflow.id, {
             chatType: chatTypes.length ? chatTypes : undefined,
             startDate: startDate,
-            endDate: endDate
+            endDate: endDate,
+            feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
         })
         getStatsApi.request(dialogProps.chatflow.id, {
             chatType: chatTypes.length ? chatTypes : undefined,
             startDate: startDate,
-            endDate: endDate
+            endDate: endDate,
+            feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
         })
     }
 
@@ -243,7 +248,7 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
             const obj = { chatflowid, isClearFromViewMessageDialog: true }
 
             let _chatTypeFilter = chatTypeFilter
-            if (typeof chatTypeFilter === 'string') {
+            if (typeof chatTypeFilter === 'string' && chatTypeFilter.startsWith('[') && chatTypeFilter.endsWith(']')) {
                 _chatTypeFilter = JSON.parse(chatTypeFilter)
             }
             if (_chatTypeFilter.length === 1) {
@@ -251,7 +256,7 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
             }
 
             let _feedbackTypeFilter = feedbackTypeFilter
-            if (typeof feedbackTypeFilter === 'string') {
+            if (typeof feedbackTypeFilter === 'string' && feedbackTypeFilter.startsWith('[') && feedbackTypeFilter.endsWith(']')) {
                 _feedbackTypeFilter = JSON.parse(feedbackTypeFilter)
             }
             if (_feedbackTypeFilter.length === 1) {
@@ -278,12 +283,14 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
             getChatmessageApi.request(chatflowid, {
                 chatType: chatTypeFilter.length ? chatTypeFilter : undefined,
                 startDate: startDate,
-                endDate: endDate
+                endDate: endDate,
+                feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
             })
             getStatsApi.request(chatflowid, {
                 chatType: chatTypeFilter.length ? chatTypeFilter : undefined,
                 startDate: startDate,
-                endDate: endDate
+                endDate: endDate,
+                feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
             })
         } catch (error) {
             console.error(error)
@@ -301,6 +308,15 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                 }
             })
         }
+    }
+
+    const getChatType = (chatType) => {
+        if (chatType === 'INTERNAL') {
+            return 'UI'
+        } else if (chatType === 'EVALUATION') {
+            return 'Evaluation'
+        }
+        return 'API/Embed'
     }
 
     const exportMessages = async () => {
@@ -337,8 +353,8 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
             if (chatmsg.feedback) msg.feedback = chatmsg.feedback?.content
             if (chatmsg.agentReasoning) msg.agentReasoning = chatmsg.agentReasoning
             if (chatmsg.artifacts) {
-                obj.artifacts = chatmsg.artifacts
-                obj.artifacts.forEach((artifact) => {
+                msg.artifacts = chatmsg.artifacts
+                msg.artifacts.forEach((artifact) => {
                     if (artifact.type === 'png' || artifact.type === 'jpeg') {
                         artifact.data = `${baseURL}/api/v1/get-upload-file?chatflowId=${chatmsg.chatflowid}&chatId=${
                             chatmsg.chatId
@@ -349,7 +365,7 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
             if (!Object.prototype.hasOwnProperty.call(obj, chatPK)) {
                 obj[chatPK] = {
                     id: chatmsg.chatId,
-                    source: chatmsg.chatType === 'INTERNAL' ? 'UI' : 'API/Embed',
+                    source: getChatType(chatmsg.chatType),
                     sessionId: chatmsg.sessionId ?? null,
                     memoryType: chatmsg.memoryType ?? null,
                     email: chatmsg.leadEmail ?? null,
@@ -423,8 +439,18 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                         )
                     }
                 })
-                getChatmessageApi.request(chatflowid)
-                getStatsApi.request(chatflowid) // update stats
+                getChatmessageApi.request(chatflowid, {
+                    startDate: startDate,
+                    endDate: endDate,
+                    chatType: chatTypeFilter.length ? chatTypeFilter : undefined,
+                    feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
+                })
+                getStatsApi.request(chatflowid, {
+                    startDate: startDate,
+                    endDate: endDate,
+                    chatType: chatTypeFilter.length ? chatTypeFilter : undefined,
+                    feedbackType: feedbackTypeFilter.length ? feedbackTypeFilter : undefined
+                })
             } catch (error) {
                 enqueueSnackbar({
                     message: typeof error.response.data === 'object' ? error.response.data.message : error.response.data,
@@ -685,19 +711,25 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
 
     useEffect(() => {
         if (dialogProps.chatflow) {
-            getChatmessageApi.request(dialogProps.chatflow.id)
-            getStatsApi.request(dialogProps.chatflow.id)
+            getChatmessageApi.request(dialogProps.chatflow.id, {
+                startDate: startDate,
+                endDate: endDate
+            })
+            getStatsApi.request(dialogProps.chatflow.id, {
+                startDate: startDate,
+                endDate: endDate
+            })
         }
 
         return () => {
             setChatLogs([])
             setAllChatLogs([])
             setChatMessages([])
-            setChatTypeFilter([])
+            setChatTypeFilter(['INTERNAL', 'EXTERNAL'])
             setFeedbackTypeFilter([])
             setSelectedMessageIndex(0)
             setSelectedChatId('')
-            setStartDate(new Date().setMonth(new Date().getMonth() - 1))
+            setStartDate(new Date(new Date().setMonth(new Date().getMonth() - 1)))
             setEndDate(new Date())
             setStats([])
             setLeadEmail('')
@@ -716,8 +748,16 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
         if (dialogProps.chatflow) {
             // when the filter is cleared fetch all messages
             if (feedbackTypeFilter.length === 0) {
-                getChatmessageApi.request(dialogProps.chatflow.id)
-                getStatsApi.request(dialogProps.chatflow.id)
+                getChatmessageApi.request(dialogProps.chatflow.id, {
+                    startDate: startDate,
+                    endDate: endDate,
+                    chatType: chatTypeFilter.length ? chatTypeFilter : undefined
+                })
+                getStatsApi.request(dialogProps.chatflow.id, {
+                    startDate: startDate,
+                    endDate: endDate,
+                    chatType: chatTypeFilter.length ? chatTypeFilter : undefined
+                })
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -770,33 +810,7 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                 </div>
             )
         } else {
-            return (
-                <MemoizedReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeMathjax, rehypeRaw]}
-                    components={{
-                        code({ inline, className, children, ...props }) {
-                            const match = /language-(\w+)/.exec(className || '')
-                            return !inline ? (
-                                <CodeBlock
-                                    key={Math.random()}
-                                    chatflowid={dialogProps.chatflow.id}
-                                    isDialog={true}
-                                    language={(match && match[1]) || ''}
-                                    value={String(children).replace(/\n$/, '')}
-                                    {...props}
-                                />
-                            ) : (
-                                <code className={className} {...props}>
-                                    {children}
-                                </code>
-                            )
-                        }
-                    }}
-                >
-                    {item.data}
-                </MemoizedReactMarkdown>
-            )
+            return <MemoizedReactMarkdown chatflowid={dialogProps.chatflow.id}>{item.data}</MemoizedReactMarkdown>
         }
     }
 
@@ -875,6 +889,10 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                                     {
                                         label: 'API/Embed',
                                         name: 'EXTERNAL'
+                                    },
+                                    {
+                                        label: 'Evaluations',
+                                        name: 'EVALUATION'
                                     }
                                 ]}
                                 onSelect={(newValue) => onChatTypeSelected(newValue)}
@@ -1011,7 +1029,7 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                                             )}
                                             {chatMessages[1].chatType && (
                                                 <div>
-                                                    Source:&nbsp;<b>{chatMessages[1].chatType === 'INTERNAL' ? 'UI' : 'API/Embed'}</b>
+                                                    Source:&nbsp;<b>{getChatType(chatMessages[1].chatType)}</b>
                                                 </div>
                                             )}
                                             {chatMessages[1].memoryType && (
@@ -1178,10 +1196,30 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                                                                                                             key={index}
                                                                                                             label={tool.tool}
                                                                                                             component='a'
-                                                                                                            sx={{ mr: 1, mt: 1 }}
+                                                                                                            sx={{
+                                                                                                                mr: 1,
+                                                                                                                mt: 1,
+                                                                                                                borderColor: tool.error
+                                                                                                                    ? 'error.main'
+                                                                                                                    : undefined,
+                                                                                                                color: tool.error
+                                                                                                                    ? 'error.main'
+                                                                                                                    : undefined
+                                                                                                            }}
                                                                                                             variant='outlined'
                                                                                                             clickable
-                                                                                                            icon={<IconTool size={15} />}
+                                                                                                            icon={
+                                                                                                                <IconTool
+                                                                                                                    size={15}
+                                                                                                                    color={
+                                                                                                                        tool.error
+                                                                                                                            ? theme.palette
+                                                                                                                                  .error
+                                                                                                                                  .main
+                                                                                                                            : undefined
+                                                                                                                    }
+                                                                                                                />
+                                                                                                            }
                                                                                                             onClick={() =>
                                                                                                                 onSourceDialogClick(
                                                                                                                     tool,
@@ -1248,44 +1286,7 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                                                                                         )}
                                                                                         {agent.messages.length > 0 && (
                                                                                             <MemoizedReactMarkdown
-                                                                                                remarkPlugins={[remarkGfm, remarkMath]}
-                                                                                                rehypePlugins={[rehypeMathjax, rehypeRaw]}
-                                                                                                components={{
-                                                                                                    code({
-                                                                                                        inline,
-                                                                                                        className,
-                                                                                                        children,
-                                                                                                        ...props
-                                                                                                    }) {
-                                                                                                        const match = /language-(\w+)/.exec(
-                                                                                                            className || ''
-                                                                                                        )
-                                                                                                        return !inline ? (
-                                                                                                            <CodeBlock
-                                                                                                                key={Math.random()}
-                                                                                                                chatflowid={
-                                                                                                                    dialogProps.chatflow.id
-                                                                                                                }
-                                                                                                                isDialog={true}
-                                                                                                                language={
-                                                                                                                    (match && match[1]) ||
-                                                                                                                    ''
-                                                                                                                }
-                                                                                                                value={String(
-                                                                                                                    children
-                                                                                                                ).replace(/\n$/, '')}
-                                                                                                                {...props}
-                                                                                                            />
-                                                                                                        ) : (
-                                                                                                            <code
-                                                                                                                className={className}
-                                                                                                                {...props}
-                                                                                                            >
-                                                                                                                {children}
-                                                                                                            </code>
-                                                                                                        )
-                                                                                                    }
-                                                                                                }}
+                                                                                                chatflowid={dialogProps.chatflow.id}
                                                                                             >
                                                                                                 {agent.messages.length > 1
                                                                                                     ? agent.messages.join('\\n')
@@ -1371,9 +1372,24 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                                                                                     key={index}
                                                                                     label={tool.tool}
                                                                                     component='a'
-                                                                                    sx={{ mr: 1, mt: 1 }}
+                                                                                    sx={{
+                                                                                        mr: 1,
+                                                                                        mt: 1,
+                                                                                        borderColor: tool.error ? 'error.main' : undefined,
+                                                                                        color: tool.error ? 'error.main' : undefined
+                                                                                    }}
                                                                                     variant='outlined'
                                                                                     clickable
+                                                                                    icon={
+                                                                                        <IconTool
+                                                                                            size={15}
+                                                                                            color={
+                                                                                                tool.error
+                                                                                                    ? theme.palette.error.main
+                                                                                                    : undefined
+                                                                                            }
+                                                                                        />
+                                                                                    }
                                                                                     onClick={() => onSourceDialogClick(tool, 'Used Tools')}
                                                                                 />
                                                                             )
@@ -1397,30 +1413,7 @@ const ViewMessagesDialog = ({ show, dialogProps, onCancel }) => {
                                                                     </div>
                                                                 )}
                                                                 <div className='markdownanswer'>
-                                                                    {/* Messages are being rendered in Markdown format */}
-                                                                    <MemoizedReactMarkdown
-                                                                        remarkPlugins={[remarkGfm, remarkMath]}
-                                                                        rehypePlugins={[rehypeMathjax, rehypeRaw]}
-                                                                        components={{
-                                                                            code({ inline, className, children, ...props }) {
-                                                                                const match = /language-(\w+)/.exec(className || '')
-                                                                                return !inline ? (
-                                                                                    <CodeBlock
-                                                                                        key={Math.random()}
-                                                                                        chatflowid={dialogProps.chatflow.id}
-                                                                                        isDialog={true}
-                                                                                        language={(match && match[1]) || ''}
-                                                                                        value={String(children).replace(/\n$/, '')}
-                                                                                        {...props}
-                                                                                    />
-                                                                                ) : (
-                                                                                    <code className={className} {...props}>
-                                                                                        {children}
-                                                                                    </code>
-                                                                                )
-                                                                            }
-                                                                        }}
-                                                                    >
+                                                                    <MemoizedReactMarkdown chatflowid={dialogProps.chatflow.id}>
                                                                         {message.message}
                                                                     </MemoizedReactMarkdown>
                                                                 </div>

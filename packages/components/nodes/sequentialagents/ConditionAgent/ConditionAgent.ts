@@ -16,7 +16,7 @@ import {
     ISeqAgentNode,
     ISeqAgentsState
 } from '../../../src/Interface'
-import { getInputVariables, getVars, handleEscapeCharacters, prepareSandboxVars } from '../../../src/utils'
+import { getInputVariables, getVars, handleEscapeCharacters, prepareSandboxVars, transformBracesWithColon } from '../../../src/utils'
 import {
     ExtractTool,
     checkCondition,
@@ -151,7 +151,7 @@ class ConditionAgent_SeqAgents implements INode {
     constructor() {
         this.label = 'Condition Agent'
         this.name = 'seqConditionAgent'
-        this.version = 3.0
+        this.version = 3.1
         this.type = 'ConditionAgent'
         this.icon = 'condition.svg'
         this.category = 'Sequential Agents'
@@ -166,9 +166,11 @@ class ConditionAgent_SeqAgents implements INode {
                 placeholder: 'Condition Agent'
             },
             {
-                label: 'Start | Agent | LLM | Tool Node',
+                label: 'Sequential Node',
                 name: 'sequentialNode',
-                type: 'Start | Agent | LLMNode | ToolNode',
+                type: 'Start | Agent | LLMNode | ToolNode | CustomFunction | ExecuteFlow',
+                description:
+                    'Can be connected to one of the following nodes: Start, Agent, LLM Node, Tool Node, Custom Function, Execute Flow',
                 list: true
             },
             {
@@ -388,7 +390,9 @@ class ConditionAgent_SeqAgents implements INode {
         const output = nodeData.outputs?.output as string
         const sequentialNodes = nodeData.inputs?.sequentialNode as ISeqAgentNode[]
         let agentPrompt = nodeData.inputs?.systemMessagePrompt as string
+        agentPrompt = transformBracesWithColon(agentPrompt)
         let humanPrompt = nodeData.inputs?.humanMessagePrompt as string
+        humanPrompt = transformBracesWithColon(humanPrompt)
         const promptValuesStr = nodeData.inputs?.promptValues
         const conditionAgentStructuredOutput = nodeData.inputs?.conditionAgentStructuredOutput
         const model = nodeData.inputs?.model as BaseChatModel
@@ -536,7 +540,7 @@ const runCondition = async (
         result = { ...jsonResult, additional_kwargs: { nodeId: nodeData.id } }
     }
 
-    const variables = await getVars(appDataSource, databaseEntities, nodeData)
+    const variables = await getVars(appDataSource, databaseEntities, nodeData, options)
 
     const flow = {
         chatflowId: options.chatflowid,
@@ -549,7 +553,7 @@ const runCondition = async (
     }
 
     if (selectedTab === 'conditionFunction' && conditionFunction) {
-        const vm = await getVM(appDataSource, databaseEntities, nodeData, flow)
+        const vm = await getVM(appDataSource, databaseEntities, nodeData, options, flow)
         try {
             const response = await vm.run(`module.exports = async function() {${conditionFunction}}()`, __dirname)
             if (typeof response !== 'string') throw new Error('Condition function must return a string')

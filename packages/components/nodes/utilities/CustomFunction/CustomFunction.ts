@@ -83,11 +83,12 @@ class CustomFunction_Utilities implements INode {
         const databaseEntities = options.databaseEntities as IDatabaseEntity
         const tools = Object.fromEntries((flatten(nodeData.inputs?.tools) as StructuredTool[])?.map((tool) => [tool.name, tool]) ?? [])
 
-        const variables = await getVars(appDataSource, databaseEntities, nodeData)
+        const variables = await getVars(appDataSource, databaseEntities, nodeData, options)
         const flow = {
             chatflowId: options.chatflowid,
             sessionId: options.sessionId,
             chatId: options.chatId,
+            rawOutput: options.rawOutput || '',
             input
         }
 
@@ -117,7 +118,14 @@ class CustomFunction_Utilities implements INode {
             }
         }
 
-        let sandbox: any = { $input: input }
+        let sandbox: any = {
+            $input: input,
+            util: undefined,
+            Symbol: undefined,
+            child_process: undefined,
+            fs: undefined,
+            process: undefined
+        }
         sandbox['$vars'] = prepareSandboxVars(variables)
         sandbox['$flow'] = flow
         sandbox['$tools'] = tools
@@ -140,7 +148,10 @@ class CustomFunction_Utilities implements INode {
             require: {
                 external: { modules: deps },
                 builtin: builtinDeps
-            }
+            },
+            eval: false,
+            wasm: false,
+            timeout: 10000
         } as any
 
         const vm = new NodeVM(nodeVMOptions)

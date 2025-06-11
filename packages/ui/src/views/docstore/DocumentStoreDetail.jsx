@@ -20,8 +20,7 @@ import {
     MenuItem,
     Divider,
     Button,
-    Skeleton,
-    IconButton
+    Skeleton
 } from '@mui/material'
 import { alpha, styled, useTheme } from '@mui/material/styles'
 import { tableCellClasses } from '@mui/material/TableCell'
@@ -35,8 +34,11 @@ import ErrorBoundary from '@/ErrorBoundary'
 import { StyledButton } from '@/ui-component/button/StyledButton'
 import ViewHeader from '@/layout/MainLayout/ViewHeader'
 import DeleteDocStoreDialog from './DeleteDocStoreDialog'
+import { Available } from '@/ui-component/rbac/available'
+import { PermissionIconButton, StyledPermissionButton } from '@/ui-component/button/RBACButtons'
 import DocumentStoreStatus from '@/views/docstore/DocumentStoreStatus'
 import ConfirmDialog from '@/ui-component/dialog/ConfirmDialog'
+import DocStoreAPIDialog from './DocStoreAPIDialog'
 
 // API
 import documentsApi from '@/api/documentstore'
@@ -44,6 +46,7 @@ import documentsApi from '@/api/documentstore'
 // Hooks
 import useApi from '@/hooks/useApi'
 import useNotifier from '@/utils/useNotifier'
+import { useAuth } from '@/hooks/useAuth'
 import { getFileName } from '@/utils/genericHelper'
 import useConfirm from '@/hooks/useConfirm'
 
@@ -56,10 +59,12 @@ import FileChunksIcon from '@mui/icons-material/AppRegistration'
 import NoteAddIcon from '@mui/icons-material/NoteAdd'
 import SearchIcon from '@mui/icons-material/Search'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import CodeIcon from '@mui/icons-material/Code'
 import doc_store_details_emptySVG from '@/assets/images/doc_store_details_empty.svg'
 
 // store
 import { closeSnackbar as closeSnackbarAction, enqueueSnackbar as enqueueSnackbarAction } from '@/store/actions'
+import { useError } from '@/store/context/ErrorContext'
 
 // ==============================|| DOCUMENTS ||============================== //
 
@@ -124,15 +129,17 @@ const DocumentStoreDetails = () => {
     const customization = useSelector((state) => state.customization)
     const navigate = useNavigate()
     const dispatch = useDispatch()
+    const { hasAssignedWorkspace } = useAuth()
     useNotifier()
     const { confirm } = useConfirm()
 
     const enqueueSnackbar = (...args) => dispatch(enqueueSnackbarAction(...args))
     const closeSnackbar = (...args) => dispatch(closeSnackbarAction(...args))
+    const { error, setError } = useError()
+    const { hasPermission } = useAuth()
 
     const getSpecificDocumentStore = useApi(documentsApi.getSpecificDocumentStore)
 
-    const [error, setError] = useState(null)
     const [isLoading, setLoading] = useState(true)
     const [isBackdropLoading, setBackdropLoading] = useState(false)
     const [showDialog, setShowDialog] = useState(false)
@@ -142,6 +149,8 @@ const DocumentStoreDetails = () => {
     const [documentLoaderListDialogProps, setDocumentLoaderListDialogProps] = useState({})
     const [showDeleteDocStoreDialog, setShowDeleteDocStoreDialog] = useState(false)
     const [deleteDocStoreDialogProps, setDeleteDocStoreDialogProps] = useState({})
+    const [showDocStoreAPIDialog, setShowDocStoreAPIDialog] = useState(false)
+    const [docStoreAPIDialogProps, setDocStoreAPIDialogProps] = useState({})
 
     const [anchorEl, setAnchorEl] = useState(null)
     const open = Boolean(anchorEl)
@@ -374,6 +383,16 @@ const DocumentStoreDetails = () => {
         setAnchorEl(event.currentTarget)
     }
 
+    const onViewUpsertAPI = (storeId, loaderId) => {
+        const props = {
+            title: `Upsert API`,
+            storeId,
+            loaderId
+        }
+        setDocStoreAPIDialogProps(props)
+        setShowDocStoreAPIDialog(true)
+    }
+
     const handleClose = () => {
         setAnchorEl(null)
     }
@@ -386,19 +405,16 @@ const DocumentStoreDetails = () => {
 
     useEffect(() => {
         if (getSpecificDocumentStore.data) {
+            const workspaceId = getSpecificDocumentStore.data.workspaceId
+            if (!hasAssignedWorkspace(workspaceId)) {
+                navigate('/unauthorized')
+                return
+            }
             setDocumentStore(getSpecificDocumentStore.data)
-            // total the chunks and chars
         }
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [getSpecificDocumentStore.data])
-
-    useEffect(() => {
-        if (getSpecificDocumentStore.error) {
-            setError(getSpecificDocumentStore.error)
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [getSpecificDocumentStore.error])
 
     useEffect(() => {
         setLoading(getSpecificDocumentStore.loading)
@@ -413,7 +429,7 @@ const DocumentStoreDetails = () => {
                     <Stack flexDirection='column' sx={{ gap: 3 }}>
                         <ViewHeader
                             isBackButton={true}
-                            isEditButton={true}
+                            isEditButton={hasPermission('documentStores:create,documentStores:update')}
                             search={false}
                             title={documentStore?.name}
                             description={documentStore?.description}
@@ -421,18 +437,25 @@ const DocumentStoreDetails = () => {
                             onEdit={() => onEditClicked()}
                         >
                             {(documentStore?.status === 'STALE' || documentStore?.status === 'UPSERTING') && (
-                                <IconButton onClick={onConfirm} size='small' color='primary' title='Refresh Document Store'>
+                                <PermissionIconButton
+                                    permissionId={'documentStores:view'}
+                                    onClick={onConfirm}
+                                    size='small'
+                                    color='primary'
+                                    title='Refresh Document Store'
+                                >
                                     <IconRefresh />
-                                </IconButton>
+                                </PermissionIconButton>
                             )}
-                            <StyledButton
+                            <StyledPermissionButton
+                                permissionId={'documentStores:add-loader'}
                                 variant='contained'
                                 sx={{ ml: 2, minWidth: 200, borderRadius: 2, height: '100%', color: 'white' }}
                                 startIcon={<IconPlus />}
                                 onClick={listLoaders}
                             >
                                 Add Document Loader
-                            </StyledButton>
+                            </StyledPermissionButton>
                             <Button
                                 id='document-store-header-action-button'
                                 aria-controls={open ? 'document-store-header-menu' : undefined}
@@ -464,14 +487,16 @@ const DocumentStoreDetails = () => {
                                     <FileChunksIcon />
                                     View & Edit Chunks
                                 </MenuItem>
-                                <MenuItem
-                                    disabled={documentStore?.totalChunks <= 0 || documentStore?.status === 'UPSERTING'}
-                                    onClick={() => showVectorStore(documentStore.id)}
-                                    disableRipple
-                                >
-                                    <NoteAddIcon />
-                                    Upsert All Chunks
-                                </MenuItem>
+                                <Available permission={'documentStores:upsert-config'}>
+                                    <MenuItem
+                                        disabled={documentStore?.totalChunks <= 0 || documentStore?.status === 'UPSERTING'}
+                                        onClick={() => showVectorStore(documentStore.id)}
+                                        disableRipple
+                                    >
+                                        <NoteAddIcon />
+                                        Upsert All Chunks
+                                    </MenuItem>
+                                </Available>
                                 <MenuItem
                                     disabled={documentStore?.totalChunks <= 0 || documentStore?.status !== 'UPSERTED'}
                                     onClick={() => showVectorStoreQuery(documentStore.id)}
@@ -480,15 +505,17 @@ const DocumentStoreDetails = () => {
                                     <SearchIcon />
                                     Retrieval Query
                                 </MenuItem>
-                                <MenuItem
-                                    disabled={documentStore?.totalChunks <= 0 || documentStore?.status !== 'UPSERTED'}
-                                    onClick={() => onStoreRefresh(documentStore.id)}
-                                    disableRipple
-                                    title='Re-process all loaders and upsert all chunks'
-                                >
-                                    <RefreshIcon />
-                                    Refresh
-                                </MenuItem>
+                                <Available permission={'documentStores:upsert-config'}>
+                                    <MenuItem
+                                        disabled={documentStore?.totalChunks <= 0 || documentStore?.status !== 'UPSERTED'}
+                                        onClick={() => onStoreRefresh(documentStore.id)}
+                                        disableRipple
+                                        title='Re-process all loaders and upsert all chunks'
+                                    >
+                                        <RefreshIcon />
+                                        Refresh
+                                    </MenuItem>
+                                </Available>
                                 <Divider sx={{ my: 0.5 }} />
                                 <MenuItem
                                     onClick={() => onStoreDelete(documentStore.vectorStoreConfig, documentStore.recordManagerConfig)}
@@ -575,7 +602,9 @@ const DocumentStoreDetails = () => {
                                             <StyledTableCell>Source(s)</StyledTableCell>
                                             <StyledTableCell>Chunks</StyledTableCell>
                                             <StyledTableCell>Chars</StyledTableCell>
-                                            <StyledTableCell>Actions</StyledTableCell>
+                                            <Available permission={'documentStores:preview-process,documentStores:delete-loader'}>
+                                                <StyledTableCell>Actions</StyledTableCell>
+                                            </Available>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
@@ -600,9 +629,11 @@ const DocumentStoreDetails = () => {
                                                     <StyledTableCell>
                                                         <Skeleton variant='text' />
                                                     </StyledTableCell>
-                                                    <StyledTableCell>
-                                                        <Skeleton variant='text' />
-                                                    </StyledTableCell>
+                                                    <Available permission={'documentStores:preview-process,documentStores:delete-loader'}>
+                                                        <StyledTableCell>
+                                                            <Skeleton variant='text' />
+                                                        </StyledTableCell>
+                                                    </Available>
                                                 </StyledTableRow>
                                                 <StyledTableRow>
                                                     <StyledTableCell>
@@ -623,9 +654,11 @@ const DocumentStoreDetails = () => {
                                                     <StyledTableCell>
                                                         <Skeleton variant='text' />
                                                     </StyledTableCell>
-                                                    <StyledTableCell>
-                                                        <Skeleton variant='text' />
-                                                    </StyledTableCell>
+                                                    <Available permission={'documentStores:preview-process,documentStores:delete-loader'}>
+                                                        <StyledTableCell>
+                                                            <Skeleton variant='text' />
+                                                        </StyledTableCell>
+                                                    </Available>
                                                 </StyledTableRow>
                                             </>
                                         ) : (
@@ -650,6 +683,7 @@ const DocumentStoreDetails = () => {
                                                             onChunkUpsert={() =>
                                                                 navigate(`/document-stores/vector/${documentStore.id}/${loader.id}`)
                                                             }
+                                                            onViewUpsertAPI={() => onViewUpsertAPI(documentStore.id, loader.id)}
                                                         />
                                                     ))}
                                             </>
@@ -693,6 +727,13 @@ const DocumentStoreDetails = () => {
                     dialogProps={deleteDocStoreDialogProps}
                     onCancel={() => setShowDeleteDocStoreDialog(false)}
                     onDelete={onDocStoreDelete}
+                />
+            )}
+            {showDocStoreAPIDialog && (
+                <DocStoreAPIDialog
+                    show={showDocStoreAPIDialog}
+                    dialogProps={docStoreAPIDialogProps}
+                    onCancel={() => setShowDocStoreAPIDialog(false)}
                 />
             )}
             {isBackdropLoading && <BackdropLoader open={isBackdropLoading} />}
@@ -750,48 +791,64 @@ function LoaderRow(props) {
                 <StyledTableCell onClick={props.onViewChunksClick}>
                     {props.loader.totalChars && <Chip variant='outlined' size='small' label={props.loader.totalChars.toLocaleString()} />}
                 </StyledTableCell>
-                <StyledTableCell>
-                    <div>
-                        <Button
-                            id='document-store-action-button'
-                            aria-controls={open ? 'document-store-action-customized-menu' : undefined}
-                            aria-haspopup='true'
-                            aria-expanded={open ? 'true' : undefined}
-                            disableElevation
-                            onClick={(e) => handleClick(e)}
-                            endIcon={<KeyboardArrowDownIcon />}
-                        >
-                            Options
-                        </Button>
-                        <StyledMenu
-                            id='document-store-actions-customized-menu'
-                            MenuListProps={{
-                                'aria-labelledby': 'document-store-actions-customized-button'
-                            }}
-                            anchorEl={anchorEl}
-                            open={open}
-                            onClose={handleClose}
-                        >
-                            <MenuItem onClick={props.onEditClick} disableRipple>
-                                <FileEditIcon />
-                                Preview & Process
-                            </MenuItem>
-                            <MenuItem onClick={props.onViewChunksClick} disableRipple>
-                                <FileChunksIcon />
-                                View & Edit Chunks
-                            </MenuItem>
-                            <MenuItem onClick={props.onChunkUpsert} disableRipple>
-                                <NoteAddIcon />
-                                Upsert Chunks
-                            </MenuItem>
-                            <Divider sx={{ my: 0.5 }} />
-                            <MenuItem onClick={props.onDeleteClick} disableRipple>
-                                <FileDeleteIcon />
-                                Delete
-                            </MenuItem>
-                        </StyledMenu>
-                    </div>
-                </StyledTableCell>
+                <Available permission={'documentStores:preview-process,documentStores:delete-loader'}>
+                    <StyledTableCell>
+                        <div>
+                            <Button
+                                id='document-store-action-button'
+                                aria-controls={open ? 'document-store-action-customized-menu' : undefined}
+                                aria-haspopup='true'
+                                aria-expanded={open ? 'true' : undefined}
+                                disableElevation
+                                onClick={(e) => handleClick(e)}
+                                endIcon={<KeyboardArrowDownIcon />}
+                            >
+                                Options
+                            </Button>
+                            <StyledMenu
+                                id='document-store-actions-customized-menu'
+                                MenuListProps={{
+                                    'aria-labelledby': 'document-store-actions-customized-button'
+                                }}
+                                anchorEl={anchorEl}
+                                open={open}
+                                onClose={handleClose}
+                            >
+                                <Available permission={'documentStores:preview-process'}>
+                                    <MenuItem onClick={props.onEditClick} disableRipple>
+                                        <FileEditIcon />
+                                        Preview & Process
+                                    </MenuItem>
+                                </Available>
+                                <Available permission={'documentStores:preview-process'}>
+                                    <MenuItem onClick={props.onViewChunksClick} disableRipple>
+                                        <FileChunksIcon />
+                                        View & Edit Chunks
+                                    </MenuItem>
+                                </Available>
+                                <Available permission={'documentStores:preview-process'}>
+                                    <MenuItem onClick={props.onChunkUpsert} disableRipple>
+                                        <NoteAddIcon />
+                                        Upsert Chunks
+                                    </MenuItem>
+                                </Available>
+                                <Available permission={'documentStores:preview-process'}>
+                                    <MenuItem onClick={props.onViewUpsertAPI} disableRipple>
+                                        <CodeIcon />
+                                        View API
+                                    </MenuItem>
+                                </Available>
+                                <Divider sx={{ my: 0.5 }} />
+                                <Available permission={'documentStores:delete-loader'}>
+                                    <MenuItem onClick={props.onDeleteClick} disableRipple>
+                                        <FileDeleteIcon />
+                                        Delete
+                                    </MenuItem>
+                                </Available>
+                            </StyledMenu>
+                        </div>
+                    </StyledTableCell>
+                </Available>
             </TableRow>
         </>
     )
@@ -805,6 +862,7 @@ LoaderRow.propTypes = {
     onViewChunksClick: PropTypes.func,
     onEditClick: PropTypes.func,
     onDeleteClick: PropTypes.func,
-    onChunkUpsert: PropTypes.func
+    onChunkUpsert: PropTypes.func,
+    onViewUpsertAPI: PropTypes.func
 }
 export default DocumentStoreDetails

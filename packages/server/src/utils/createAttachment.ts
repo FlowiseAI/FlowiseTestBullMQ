@@ -1,9 +1,23 @@
 import { Request } from 'express'
 import * as path from 'path'
-import * as fs from 'fs'
-import { addArrayFilesToStorage, IDocument, mapExtToInputField, mapMimeTypeToInputField } from 'flowise-components-bullmq'
+import {
+    addArrayFilesToStorage,
+    getFileFromUpload,
+    IDocument,
+    mapExtToInputField,
+    mapMimeTypeToInputField,
+    removeSpecificFileFromUpload,
+    isValidUUID,
+    isPathTraversal
+} from 'flowise-components-bullmq'
 import { getRunningExpressApp } from './getRunningExpressApp'
 import { getErrorMessage } from '../errors/utils'
+import { checkStorage, updateStorageUsage } from './quotaUsage'
+import { ChatFlow } from '../database/entities/ChatFlow'
+import { Workspace } from '../enterprise/database/entities/workspace.entity'
+import { Organization } from '../enterprise/database/entities/organization.entity'
+import { InternalFlowiseError } from '../errors/internalFlowiseError'
+import { StatusCodes } from 'http-status-codes'
 
 /**
  * Create attachment
@@ -13,17 +27,74 @@ export const createFileAttachment = async (req: Request) => {
     const appServer = getRunningExpressApp()
 
     const chatflowid = req.params.chatflowId
-    if (!chatflowid) {
-        throw new Error(
-            'Params chatflowId is required! Please provide chatflowId and chatId in the URL: /api/v1/attachments/:chatflowId/:chatId'
-        )
+    if (!chatflowid || !isValidUUID(chatflowid)) {
+        throw new InternalFlowiseError(StatusCodes.BAD_REQUEST, 'Invalid chatflowId format - must be a valid UUID')
     }
 
     const chatId = req.params.chatId
-    if (!chatId) {
-        throw new Error(
-            'Params chatId is required! Please provide chatflowId and chatId in the URL: /api/v1/attachments/:chatflowId/:chatId'
-        )
+    if (!chatId || !isValidUUID(chatId)) {
+        throw new InternalFlowiseError(StatusCodes.BAD_REQUEST, 'Invalid chatId format - must be a valid UUID')
+    }
+
+    // Check for path traversal attempts
+    if (isPathTraversal(chatflowid) || isPathTraversal(chatId)) {
+        throw new InternalFlowiseError(StatusCodes.BAD_REQUEST, 'Invalid path characters detected')
+    }
+
+    // Validate chatflow exists and check API key
+    const chatflow = await appServer.AppDataSource.getRepository(ChatFlow).findOneBy({
+        id: chatflowid
+    })
+    if (!chatflow) {
+        throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `Chatflow ${chatflowid} not found`)
+    }
+
+    let orgId = req.user?.activeOrganizationId || ''
+    let workspaceId = req.user?.activeWorkspaceId || ''
+    let subscriptionId = req.user?.activeOrganizationSubscriptionId || ''
+
+    // This is one of the WHITELIST_URLS, API can be public and there might be no req.user
+    if (!orgId || !workspaceId) {
+        const chatflowWorkspaceId = chatflow.workspaceId
+        const workspace = await appServer.AppDataSource.getRepository(Workspace).findOneBy({
+            id: chatflowWorkspaceId
+        })
+        if (!workspace) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `Workspace ${chatflowWorkspaceId} not found`)
+        }
+        workspaceId = workspace.id
+
+        const org = await appServer.AppDataSource.getRepository(Organization).findOneBy({
+            id: workspace.organizationId
+        })
+        if (!org) {
+            throw new InternalFlowiseError(StatusCodes.NOT_FOUND, `Organization ${workspace.organizationId} not found`)
+        }
+
+        orgId = org.id
+        subscriptionId = org.subscriptionId as string
+    }
+
+    // Parse chatbot configuration to get file upload settings
+    let pdfConfig = {
+        usage: 'perPage',
+        legacyBuild: false
+    }
+
+    if (chatflow.chatbotConfig) {
+        try {
+            const chatbotConfig = JSON.parse(chatflow.chatbotConfig)
+            if (chatbotConfig?.fullFileUpload?.pdfFile) {
+                if (chatbotConfig.fullFileUpload.pdfFile.usage) {
+                    pdfConfig.usage = chatbotConfig.fullFileUpload.pdfFile.usage
+                }
+                if (chatbotConfig.fullFileUpload.pdfFile.legacyBuild !== undefined) {
+                    pdfConfig.legacyBuild = chatbotConfig.fullFileUpload.pdfFile.legacyBuild
+                }
+            }
+        } catch (e) {
+            // Use default PDF config if parsing fails
+        }
     }
 
     // Find FileLoader node
@@ -33,6 +104,7 @@ export const createFileAttachment = async (req: Request) => {
     const fileLoaderNodeInstance = new fileLoaderNodeModule.nodeClass()
     const options = {
         retrieveAttachmentChatId: true,
+        orgId,
         chatflowid,
         chatId
     }
@@ -41,13 +113,22 @@ export const createFileAttachment = async (req: Request) => {
     if (files.length) {
         const isBase64 = req.body.base64
         for (const file of files) {
-            const fileBuffer = fs.readFileSync(file.path)
-            const fileNames: string[] = []
+            await checkStorage(orgId, subscriptionId, appServer.usageCacheManager)
 
+            const fileBuffer = await getFileFromUpload(file.path ?? file.key)
+            const fileNames: string[] = []
             // Address file name with special characters: https://github.com/expressjs/multer/issues/1104
             file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8')
-
-            const storagePath = await addArrayFilesToStorage(file.mimetype, fileBuffer, file.originalname, fileNames, chatflowid, chatId)
+            const { path: storagePath, totalSize } = await addArrayFilesToStorage(
+                file.mimetype,
+                fileBuffer,
+                file.originalname,
+                fileNames,
+                orgId,
+                chatflowid,
+                chatId
+            )
+            await updateStorageUsage(orgId, workspaceId, totalSize, appServer.usageCacheManager)
 
             const fileInputFieldFromMimeType = mapMimeTypeToInputField(file.mimetype)
 
@@ -63,7 +144,7 @@ export const createFileAttachment = async (req: Request) => {
                 fileInputField = fileInputFieldFromExt
             }
 
-            fs.unlinkSync(file.path)
+            await removeSpecificFileFromUpload(file.path ?? file.key)
 
             try {
                 const nodeData = {
@@ -71,6 +152,12 @@ export const createFileAttachment = async (req: Request) => {
                         [fileInputField]: storagePath
                     },
                     outputs: { output: 'document' }
+                }
+
+                // Apply PDF specific configuration if this is a PDF file
+                if (fileInputField === 'pdfFile') {
+                    nodeData.inputs.usage = pdfConfig.usage
+                    nodeData.inputs.legacyBuild = pdfConfig.legacyBuild as unknown as string
                 }
 
                 let content = ''

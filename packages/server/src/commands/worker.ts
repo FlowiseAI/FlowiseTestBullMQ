@@ -7,6 +7,7 @@ import { NodesPool } from '../NodesPool'
 import { CachePool } from '../CachePool'
 import { QueueEvents, QueueEventsListener } from 'bullmq'
 import { AbortControllerPool } from '../AbortControllerPool'
+import { UsageCacheManager } from '../UsageCacheManager'
 
 interface CustomListener extends QueueEventsListener {
     abort: (args: { id: string }, id: string) => void
@@ -19,7 +20,7 @@ export default class Worker extends BaseCommand {
     async run(): Promise<void> {
         logger.info('Starting Flowise Worker...')
 
-        const { appDataSource, telemetry, componentNodes, cachePool, abortControllerPool } = await this.prepareData()
+        const { appDataSource, telemetry, componentNodes, cachePool, abortControllerPool, usageCacheManager } = await this.prepareData()
 
         const queueManager = QueueManager.getInstance()
         queueManager.setupAllQueues({
@@ -27,7 +28,8 @@ export default class Worker extends BaseCommand {
             telemetry,
             cachePool,
             appDataSource,
-            abortControllerPool
+            abortControllerPool,
+            usageCacheManager
         })
 
         /** Prediction */
@@ -59,7 +61,7 @@ export default class Worker extends BaseCommand {
         await appDataSource.initialize()
         await appDataSource.runMigrations({ transaction: 'each' })
 
-        // Initialize chatflow pool
+        // Initialize abortcontroller pool
         const abortControllerPool = new AbortControllerPool()
 
         // Init telemetry
@@ -72,7 +74,10 @@ export default class Worker extends BaseCommand {
         // Initialize cache pool
         const cachePool = new CachePool()
 
-        return { appDataSource, telemetry, componentNodes: nodesPool.componentNodes, cachePool, abortControllerPool }
+        // Initialize usage cache manager
+        const usageCacheManager = await UsageCacheManager.getInstance()
+
+        return { appDataSource, telemetry, componentNodes: nodesPool.componentNodes, cachePool, abortControllerPool, usageCacheManager }
     }
 
     async catch(error: Error) {
@@ -85,10 +90,14 @@ export default class Worker extends BaseCommand {
 
     async stopProcess() {
         try {
+            const queueManager = QueueManager.getInstance()
+            const predictionWorker = queueManager.getQueue('prediction').getWorker()
             logger.info(`Shutting down Flowise Prediction Worker ${this.predictionWorkerId}...`)
+            await predictionWorker.close()
+
+            const upsertWorker = queueManager.getQueue('upsert').getWorker()
             logger.info(`Shutting down Flowise Upsertion Worker ${this.upsertionWorkerId}...`)
-            //const serverApp = Server.getInstance()
-            //if (serverApp) await serverApp.stopApp()
+            await upsertWorker.close()
         } catch (error) {
             logger.error('There was an error shutting down Flowise Worker...', error)
             await this.failExit()

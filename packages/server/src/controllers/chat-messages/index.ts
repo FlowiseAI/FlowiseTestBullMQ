@@ -2,9 +2,9 @@ import { Request, Response, NextFunction } from 'express'
 import { ChatMessageRatingType, ChatType, IReactFlowObject } from '../../Interface'
 import chatflowsService from '../../services/chatflows'
 import chatMessagesService from '../../services/chat-messages'
-import { aMonthAgo, clearSessionMemory, setDateToStartOrEndOfDay } from '../../utils'
+import { aMonthAgo, clearSessionMemory } from '../../utils'
 import { getRunningExpressApp } from '../../utils/getRunningExpressApp'
-import { Between, FindOptionsWhere } from 'typeorm'
+import { Between, DeleteResult, FindOptionsWhere, In } from 'typeorm'
 import { ChatMessage } from '../../database/entities/ChatMessage'
 import { InternalFlowiseError } from '../../errors/internalFlowiseError'
 import { StatusCodes } from 'http-status-codes'
@@ -49,21 +49,20 @@ const createChatMessage = async (req: Request, res: Response, next: NextFunction
 
 const getAllChatMessages = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        let chatTypeFilter = req.query?.chatType as ChatType | undefined
-        if (chatTypeFilter) {
+        const _chatTypes = req.query?.chatType as string | undefined
+        let chatTypes: ChatType[] | undefined
+        if (_chatTypes) {
             try {
-                const chatTypeFilterArray = JSON.parse(chatTypeFilter)
-                if (chatTypeFilterArray.includes(ChatType.EXTERNAL) && chatTypeFilterArray.includes(ChatType.INTERNAL)) {
-                    chatTypeFilter = undefined
-                } else if (chatTypeFilterArray.includes(ChatType.EXTERNAL)) {
-                    chatTypeFilter = ChatType.EXTERNAL
-                } else if (chatTypeFilterArray.includes(ChatType.INTERNAL)) {
-                    chatTypeFilter = ChatType.INTERNAL
+                if (Array.isArray(_chatTypes)) {
+                    chatTypes = _chatTypes
+                } else {
+                    chatTypes = JSON.parse(_chatTypes)
                 }
             } catch (e) {
-                return res.status(500).send(e)
+                chatTypes = [_chatTypes as ChatType]
             }
         }
+        const activeWorkspaceId = req.user?.activeWorkspaceId
         const sortOrder = req.query?.order as string | undefined
         const chatId = req.query?.chatId as string | undefined
         const memoryType = req.query?.memoryType as string | undefined
@@ -84,7 +83,7 @@ const getAllChatMessages = async (req: Request, res: Response, next: NextFunctio
         }
         const apiResponse = await chatMessagesService.getAllChatMessages(
             req.params.id,
-            chatTypeFilter,
+            chatTypes,
             sortOrder,
             chatId,
             memoryType,
@@ -93,9 +92,9 @@ const getAllChatMessages = async (req: Request, res: Response, next: NextFunctio
             endDate,
             messageId,
             feedback,
-            feedbackTypeFilters
+            feedbackTypeFilters,
+            activeWorkspaceId
         )
-
         return res.json(parseAPIResponse(apiResponse))
     } catch (error) {
         next(error)
@@ -104,6 +103,7 @@ const getAllChatMessages = async (req: Request, res: Response, next: NextFunctio
 
 const getAllInternalChatMessages = async (req: Request, res: Response, next: NextFunction) => {
     try {
+        const activeWorkspaceId = req.user?.activeWorkspaceId
         const sortOrder = req.query?.order as string | undefined
         const chatId = req.query?.chatId as string | undefined
         const memoryType = req.query?.memoryType as string | undefined
@@ -118,7 +118,7 @@ const getAllInternalChatMessages = async (req: Request, res: Response, next: Nex
         }
         const apiResponse = await chatMessagesService.getAllInternalChatMessages(
             req.params.id,
-            ChatType.INTERNAL,
+            [ChatType.INTERNAL],
             sortOrder,
             chatId,
             memoryType,
@@ -127,7 +127,8 @@ const getAllInternalChatMessages = async (req: Request, res: Response, next: Nex
             endDate,
             messageId,
             feedback,
-            feedbackTypeFilters
+            feedbackTypeFilters,
+            activeWorkspaceId
         )
         return res.json(parseAPIResponse(apiResponse))
     } catch (error) {
@@ -144,6 +145,20 @@ const removeAllChatMessages = async (req: Request, res: Response, next: NextFunc
                 'Error: chatMessagesController.removeAllChatMessages - id not provided!'
             )
         }
+        const orgId = req.user?.activeOrganizationId
+        if (!orgId) {
+            throw new InternalFlowiseError(
+                StatusCodes.NOT_FOUND,
+                `Error: chatMessagesController.removeAllChatMessages - organization ${orgId} not found!`
+            )
+        }
+        const workspaceId = req.user?.activeWorkspaceId
+        if (!workspaceId) {
+            throw new InternalFlowiseError(
+                StatusCodes.NOT_FOUND,
+                `Error: chatMessagesController.removeAllChatMessages - workspace ${workspaceId} not found!`
+            )
+        }
         const chatflowid = req.params.id
         const chatflow = await chatflowsService.getChatflowById(req.params.id)
         if (!chatflow) {
@@ -155,7 +170,19 @@ const removeAllChatMessages = async (req: Request, res: Response, next: NextFunc
         const chatId = req.query?.chatId as string
         const memoryType = req.query?.memoryType as string | undefined
         const sessionId = req.query?.sessionId as string | undefined
-        const _chatType = req.query?.chatType as string | undefined
+        const _chatTypes = req.query?.chatType as string | undefined
+        let chatTypes: ChatType[] | undefined
+        if (_chatTypes) {
+            try {
+                if (Array.isArray(_chatTypes)) {
+                    chatTypes = _chatTypes
+                } else {
+                    chatTypes = JSON.parse(_chatTypes)
+                }
+            } catch (e) {
+                chatTypes = [_chatTypes as ChatType]
+            }
+        }
         const startDate = req.query?.startDate as string | undefined
         const endDate = req.query?.endDate as string | undefined
         const isClearFromViewMessageDialog = req.query?.isClearFromViewMessageDialog as string | undefined
@@ -167,20 +194,22 @@ const removeAllChatMessages = async (req: Request, res: Response, next: NextFunc
         if (!chatId) {
             const isFeedback = feedbackTypeFilters?.length ? true : false
             const hardDelete = req.query?.hardDelete as boolean | undefined
-            const messages = await utilGetChatMessage(
+
+            const messages = await utilGetChatMessage({
                 chatflowid,
-                _chatType as ChatType | undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
+                chatTypes,
+                sessionId,
                 startDate,
                 endDate,
-                undefined,
-                isFeedback,
-                feedbackTypeFilters
-            )
+                feedback: isFeedback,
+                feedbackTypes: feedbackTypeFilters
+            })
             const messageIds = messages.map((message) => message.id)
+
+            if (messages.length === 0) {
+                const result: DeleteResult = { raw: [], affected: 0 }
+                return res.json(result)
+            }
 
             // Categorize by chatId_memoryType_sessionId
             const chatIdMap = new Map<string, ChatMessage[]>()
@@ -205,6 +234,7 @@ const removeAllChatMessages = async (req: Request, res: Response, next: NextFunc
                             appServer.nodesPool.componentNodes,
                             chatId,
                             appServer.AppDataSource,
+                            orgId,
                             sessionId,
                             memoryType,
                             isClearFromViewMessageDialog
@@ -215,7 +245,14 @@ const removeAllChatMessages = async (req: Request, res: Response, next: NextFunc
                 }
             }
 
-            const apiResponse = await chatMessagesService.removeChatMessagesByMessageIds(chatflowid, chatIdMap, messageIds)
+            const apiResponse = await chatMessagesService.removeChatMessagesByMessageIds(
+                chatflowid,
+                chatIdMap,
+                messageIds,
+                orgId,
+                workspaceId,
+                appServer.usageCacheManager
+            )
             return res.json(apiResponse)
         } else {
             try {
@@ -224,6 +261,7 @@ const removeAllChatMessages = async (req: Request, res: Response, next: NextFunc
                     appServer.nodesPool.componentNodes,
                     chatId,
                     appServer.AppDataSource,
+                    orgId,
                     sessionId,
                     memoryType,
                     isClearFromViewMessageDialog
@@ -236,13 +274,22 @@ const removeAllChatMessages = async (req: Request, res: Response, next: NextFunc
             if (chatId) deleteOptions.chatId = chatId
             if (memoryType) deleteOptions.memoryType = memoryType
             if (sessionId) deleteOptions.sessionId = sessionId
-            if (_chatType) deleteOptions.chatType = _chatType
+            if (chatTypes && chatTypes.length > 0) {
+                deleteOptions.chatType = In(chatTypes)
+            }
             if (startDate && endDate) {
-                const fromDate = setDateToStartOrEndOfDay(startDate, 'start')
-                const toDate = setDateToStartOrEndOfDay(endDate, 'end')
+                const fromDate = new Date(startDate)
+                const toDate = new Date(endDate)
                 deleteOptions.createdDate = Between(fromDate ?? aMonthAgo(), toDate ?? new Date())
             }
-            const apiResponse = await chatMessagesService.removeAllChatMessages(chatId, chatflowid, deleteOptions)
+            const apiResponse = await chatMessagesService.removeAllChatMessages(
+                chatId,
+                chatflowid,
+                deleteOptions,
+                orgId,
+                workspaceId,
+                appServer.usageCacheManager
+            )
             return res.json(apiResponse)
         }
     } catch (error) {
@@ -269,26 +316,30 @@ const parseAPIResponse = (apiResponse: ChatMessage | ChatMessage[]): ChatMessage
     const parseResponse = (response: ChatMessage): ChatMessage => {
         const parsedResponse = { ...response }
 
-        if (parsedResponse.sourceDocuments) {
-            parsedResponse.sourceDocuments = JSON.parse(parsedResponse.sourceDocuments)
-        }
-        if (parsedResponse.usedTools) {
-            parsedResponse.usedTools = JSON.parse(parsedResponse.usedTools)
-        }
-        if (parsedResponse.fileAnnotations) {
-            parsedResponse.fileAnnotations = JSON.parse(parsedResponse.fileAnnotations)
-        }
-        if (parsedResponse.agentReasoning) {
-            parsedResponse.agentReasoning = JSON.parse(parsedResponse.agentReasoning)
-        }
-        if (parsedResponse.fileUploads) {
-            parsedResponse.fileUploads = JSON.parse(parsedResponse.fileUploads)
-        }
-        if (parsedResponse.action) {
-            parsedResponse.action = JSON.parse(parsedResponse.action)
-        }
-        if (parsedResponse.artifacts) {
-            parsedResponse.artifacts = JSON.parse(parsedResponse.artifacts)
+        try {
+            if (parsedResponse.sourceDocuments) {
+                parsedResponse.sourceDocuments = JSON.parse(parsedResponse.sourceDocuments)
+            }
+            if (parsedResponse.usedTools) {
+                parsedResponse.usedTools = JSON.parse(parsedResponse.usedTools)
+            }
+            if (parsedResponse.fileAnnotations) {
+                parsedResponse.fileAnnotations = JSON.parse(parsedResponse.fileAnnotations)
+            }
+            if (parsedResponse.agentReasoning) {
+                parsedResponse.agentReasoning = JSON.parse(parsedResponse.agentReasoning)
+            }
+            if (parsedResponse.fileUploads) {
+                parsedResponse.fileUploads = JSON.parse(parsedResponse.fileUploads)
+            }
+            if (parsedResponse.action) {
+                parsedResponse.action = JSON.parse(parsedResponse.action)
+            }
+            if (parsedResponse.artifacts) {
+                parsedResponse.artifacts = JSON.parse(parsedResponse.artifacts)
+            }
+        } catch (e) {
+            console.error('Error parsing chat message response', e)
         }
 
         return parsedResponse

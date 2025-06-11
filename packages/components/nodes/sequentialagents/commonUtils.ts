@@ -150,10 +150,22 @@ export const processImageMessage = async (llm: BaseChatModel, nodeData: INodeDat
     return multiModalMessageContent
 }
 
-export const getVM = async (appDataSource: DataSource, databaseEntities: IDatabaseEntity, nodeData: INodeData, flow: ICommonObject) => {
-    const variables = await getVars(appDataSource, databaseEntities, nodeData)
+export const getVM = async (
+    appDataSource: DataSource,
+    databaseEntities: IDatabaseEntity,
+    nodeData: INodeData,
+    options: ICommonObject,
+    flow: ICommonObject
+) => {
+    const variables = await getVars(appDataSource, databaseEntities, nodeData, options)
 
-    let sandbox: any = {}
+    let sandbox: any = {
+        util: undefined,
+        Symbol: undefined,
+        child_process: undefined,
+        fs: undefined,
+        process: undefined
+    }
     sandbox['$vars'] = prepareSandboxVars(variables)
     sandbox['$flow'] = flow
 
@@ -169,7 +181,10 @@ export const getVM = async (appDataSource: DataSource, databaseEntities: IDataba
         require: {
             external: { modules: deps },
             builtin: builtinDeps
-        }
+        },
+        eval: false,
+        wasm: false,
+        timeout: 10000
     } as any
 
     return new NodeVM(nodeVMOptions)
@@ -411,7 +426,7 @@ export const checkMessageHistory = async (
     if (messageHistory) {
         const appDataSource = options.appDataSource as DataSource
         const databaseEntities = options.databaseEntities as IDatabaseEntity
-        const vm = await getVM(appDataSource, databaseEntities, nodeData, {})
+        const vm = await getVM(appDataSource, databaseEntities, nodeData, options, {})
         try {
             const response = await vm.run(`module.exports = async function() {${messageHistory}}()`, __dirname)
             if (!Array.isArray(response)) throw new Error('Returned message history must be an array')

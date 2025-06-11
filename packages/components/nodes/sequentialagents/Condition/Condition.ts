@@ -96,7 +96,7 @@ class Condition_SeqAgents implements INode {
     constructor() {
         this.label = 'Condition'
         this.name = 'seqCondition'
-        this.version = 2.0
+        this.version = 2.1
         this.type = 'Condition'
         this.icon = 'condition.svg'
         this.category = 'Sequential Agents'
@@ -112,9 +112,11 @@ class Condition_SeqAgents implements INode {
                 placeholder: 'If X, then Y'
             },
             {
-                label: 'Start | Agent | LLM | Tool Node',
+                label: 'Sequential Node',
                 name: 'sequentialNode',
-                type: 'Start | Agent | LLMNode | ToolNode',
+                type: 'Start | Agent | LLMNode | ToolNode | CustomFunction | ExecuteFlow',
+                description:
+                    'Can be connected to one of the following nodes: Start, Agent, LLM Node, Tool Node, Custom Function, Execute Flow',
                 list: true
             },
             {
@@ -265,7 +267,7 @@ const runCondition = async (nodeData: INodeData, input: string, options: ICommon
     const tabIdentifier = nodeData.inputs?.[`${TAB_IDENTIFIER}_${nodeData.id}`] as string
 
     const selectedTab = tabIdentifier ? tabIdentifier.split(`_${nodeData.id}`)[0] : 'conditionUI'
-    const variables = await getVars(appDataSource, databaseEntities, nodeData)
+    const variables = await getVars(appDataSource, databaseEntities, nodeData, options)
 
     const flow = {
         chatflowId: options.chatflowid,
@@ -277,7 +279,7 @@ const runCondition = async (nodeData: INodeData, input: string, options: ICommon
     }
 
     if (selectedTab === 'conditionFunction' && conditionFunction) {
-        const vm = await getVM(appDataSource, databaseEntities, nodeData, flow)
+        const vm = await getVM(appDataSource, databaseEntities, nodeData, options, flow)
         try {
             const response = await vm.run(`module.exports = async function() {${conditionFunction}}()`, __dirname)
             if (typeof response !== 'string') throw new Error('Condition function must return a string')

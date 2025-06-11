@@ -6,12 +6,12 @@ English | [中文](./README-ZH.md)
 
 React frontend ui for Flowise.
 
-![Flowise](https://github.com/FlowiseAI/Flowise/blob/main/images/flowise.gif?raw=true)
+![Flowise](https://github.com/FlowiseAI/Flowise/blob/main/images/flowise_agentflow.gif?raw=true)
 
 Install:
 
 ```bash
-npm i flowise-ui
+npm i flowise-ui-bullmq
 ```
 
 ## License

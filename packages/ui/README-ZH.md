@@ -6,12 +6,12 @@
 
 Flowise 的 React 前端界面。
 
-![Flowise](https://github.com/FlowiseAI/Flowise/blob/main/images/flowise.gif?raw=true)
+![Flowise](https://github.com/FlowiseAI/Flowise/blob/main/images/flowise_agentflow.gif?raw=true)
 
 安装：
 
 ```bash
-npm i flowise-ui
+npm i flowise-ui-bullmq
 ```
 
 ## 许可证

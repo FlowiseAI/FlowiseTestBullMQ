@@ -1,11 +1,11 @@
 {
     "name": "flowise-bullmq",
-    "version": "3.0.3",
+    "version": "3.0.22",
     "description": "Flowiseai Server",
     "main": "dist/index",
     "types": "dist/index.d.ts",
     "bin": {
-        "flowise": "./bin/run"
+        "flowise-bullmq": "./bin/run"
     },
     "files": [
         "bin",
@@ -16,7 +16,7 @@
         "oauth2.html"
     ],
     "oclif": {
-        "bin": "flowise",
+        "bin": "flowise-bullmq",
         "commands": "./dist/commands"
     },
     "scripts": {

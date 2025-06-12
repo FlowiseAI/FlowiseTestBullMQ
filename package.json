@@ -1,6 +1,6 @@
 {
     "name": "flowise-bullmq",
-    "version": "3.0.3",
+    "version": "3.0.22",
     "private": true,
     "homepage": "https://flowiseai.com",
     "workspaces": [

@@ -18,7 +18,7 @@ Here’s an overview of the process:
 
 ## Setting up Worker:
 
-1. Copy paste the same `.env` file used to setup main server. Change the `PORT` to other available port numbers. Ex: 5566
-2. `docker compose up -d`
-3. Open [http://localhost:5566](http://localhost:5566)
+1. Navigat to `docker/worker` folder
+2. Copy paste the same `.env` file used to setup main server. Change the `PORT` to other available port numbers. Ex: 5566
+3. `docker compose up -d`
 4. You can bring the worker container down by `docker compose stop`

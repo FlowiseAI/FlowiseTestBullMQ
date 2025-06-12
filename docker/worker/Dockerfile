@@ -4,7 +4,7 @@ RUN apk add --update libc6-compat python3 make g++
 # needed for pdfjs-dist
 RUN apk add --no-cache build-base cairo-dev pango-dev
 
-# Install Chromium
+# Install Chromium and curl for container-level health checks
 RUN apk add --no-cache chromium curl
 
 #install PNPM globaly
@@ -25,6 +25,7 @@ RUN pnpm install
 RUN pnpm build
 
 # --- Healthcheck Setup ---
+    
 WORKDIR /app/healthcheck
 
 COPY docker/worker/healthcheck/package.json . 
@@ -38,7 +39,11 @@ COPY docker/worker/healthcheck/healthcheck.js .
 # Set the main working directory back
 WORKDIR /usr/src
 
-EXPOSE 3000
+# Environment variables for port configuration
+ENV PORT=3000
 
-# Start healthcheck in background and flowise in foreground
+# Expose port (can be overridden by env var)
+EXPOSE ${PORT}
+
+# Start healthcheck in background and flowise worker in foreground
 CMD ["/bin/sh", "-c", "node /app/healthcheck/healthcheck.js & sleep 5 && pnpm run start-worker"]

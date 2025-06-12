@@ -2,7 +2,7 @@ version: '3.1'
 
 services:
     flowise:
-        image: flowiseai/flowise
+        image: flowiseai/flowise-bullmq-worker:latest
         restart: always
         environment:
             - PORT=${PORT}
@@ -125,6 +125,12 @@ services:
             - ENABLE_BULLMQ_DASHBOARD=${ENABLE_BULLMQ_DASHBOARD}
         ports:
             - '${PORT}:${PORT}'
+        healthcheck:
+            test: ['CMD', 'curl', '-f', 'http://localhost:${PORT}/healthz']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 30s
         volumes:
             - ~/.flowise:/root/.flowise
-        entrypoint: /bin/sh -c "sleep 3; flowise worker"
+        entrypoint: /bin/sh -c "sleep 3; pnpm run start-worker"

@@ -25,7 +25,7 @@ RUN pnpm install
 RUN pnpm build
 
 # --- Healthcheck Setup ---
-    
+
 WORKDIR /app/healthcheck
 
 COPY docker/worker/healthcheck/package.json . 
@@ -40,10 +40,10 @@ COPY docker/worker/healthcheck/healthcheck.js .
 WORKDIR /usr/src
 
 # Environment variables for port configuration
-ENV PORT=3000
+ENV WORKER_PORT=5566
 
 # Expose port (can be overridden by env var)
-EXPOSE ${PORT}
+EXPOSE ${WORKER_PORT}
 
 # Start healthcheck in background and flowise worker in foreground
 CMD ["/bin/sh", "-c", "node /app/healthcheck/healthcheck.js & sleep 5 && pnpm run start-worker"]

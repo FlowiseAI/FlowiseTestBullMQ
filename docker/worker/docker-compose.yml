@@ -5,7 +5,7 @@ services:
         image: flowiseai/flowise-bullmq-worker:latest
         restart: always
         environment:
-            - PORT=${PORT}
+            - WORKER_PORT=${WORKER_PORT:-5566}
 
             # DATABASE
             - DATABASE_PATH=${DATABASE_PATH}
@@ -124,9 +124,9 @@ services:
             - REDIS_KEEP_ALIVE=${REDIS_KEEP_ALIVE}
             - ENABLE_BULLMQ_DASHBOARD=${ENABLE_BULLMQ_DASHBOARD}
         ports:
-            - '${PORT}:${PORT}'
+            - '${WORKER_PORT}:${WORKER_PORT}'
         healthcheck:
-            test: ['CMD', 'curl', '-f', 'http://localhost:${PORT}/healthz']
+            test: ['CMD', 'curl', '-f', 'http://localhost:${WORKER_PORT}/healthz']
             interval: 10s
             timeout: 5s
             retries: 5

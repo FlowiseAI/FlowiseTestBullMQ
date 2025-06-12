@@ -25,4 +25,4 @@ Here’s an overview of the process:
 
 ## Entrypoint:
 
-Different from main server image which is using `flowise start`, entrypoint for worker is `pnpm run start-worker`. This is because the worker's [Dockerfile](./Dockerfile) build the image via `pnpm build` instead of `RUN npm install -g flowise`.
+Different from main server image which is using `flowise start`, entrypoint for worker is `pnpm run start-worker`. This is because the worker's [Dockerfile](./Dockerfile) build the image from source files via `pnpm build` instead of npm registry via `RUN npm install -g flowise`.

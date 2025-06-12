@@ -93,7 +93,7 @@ jobs:
                   context: .
                   file: |
                       ${{ 
-                        steps.defaults.outputs.image_type == 'worker' && 'docker/worker/Dockerfile.worker' ||
+                        steps.defaults.outputs.image_type == 'worker' && 'docker/worker/Dockerfile' ||
                         (steps.defaults.outputs.registry == 'docker_hub' && './docker/Dockerfile' || 'Dockerfile') 
                       }}
                   build-args: |

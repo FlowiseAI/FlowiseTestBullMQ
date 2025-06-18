@@ -1,6 +1,6 @@
 {
     "name": "flowise-bullmq",
-    "version": "3.0.24",
+    "version": "3.0.25",
     "description": "Flowiseai Server",
     "main": "dist/index",
     "types": "dist/index.d.ts",

@@ -7,7 +7,7 @@ body:
     - type: markdown
       attributes:
           value: |
-              Thanks for taking the time to fill out this bug report!
+              Make sure to have a proper title and description.
 
     - type: textarea
       id: bug-description
@@ -54,6 +54,17 @@ body:
           placeholder: Paste your exported flow here
 
     - type: dropdown
+      id: deployment-type
+      attributes:
+          label: Deployment Type
+          description: Are you using Flowise Cloud or self-hosted (Open Source)?
+          options:
+              - Flowise Cloud
+              - Open Source (Self-hosted)
+      validations:
+          required: true
+
+    - type: dropdown
       id: installation
       attributes:
           label: Installation Method
@@ -62,11 +73,11 @@ body:
               - Docker
               - npx flowise start
               - pnpm start
-              - npm start
-              - yarn start
-              - Other (please specify in additional context)
       validations:
           required: true
+      visible:
+          - deployment-type
+          - 'Open Source (Self-hosted)'
 
     - type: input
       id: version
@@ -89,6 +100,9 @@ body:
               - Other
       validations:
           required: true
+      visible:
+          - deployment-type
+          - 'Open Source (Self-hosted)'
 
     - type: dropdown
       id: browser

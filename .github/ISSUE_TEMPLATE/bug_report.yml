@@ -54,30 +54,17 @@ body:
           placeholder: Paste your exported flow here
 
     - type: dropdown
-      id: deployment-type
+      id: method
       attributes:
-          label: Deployment Type
-          description: Are you using Flowise Cloud or self-hosted (Open Source)?
+          label: Use Method
+          description: How did you use Flowise?
           options:
               - Flowise Cloud
-              - Open Source (Self-hosted)
-      validations:
-          required: true
-
-    - type: dropdown
-      id: installation
-      attributes:
-          label: Installation Method
-          description: How did you install Flowise?
-          options:
               - Docker
               - npx flowise start
               - pnpm start
       validations:
           required: true
-      visible:
-          - deployment-type
-          - 'Open Source (Self-hosted)'
 
     - type: input
       id: version
@@ -85,8 +72,6 @@ body:
           label: Flowise Version
           description: What version of Flowise are you running?
           placeholder: e.g., 1.2.11
-      validations:
-          required: true
 
     - type: dropdown
       id: os
@@ -98,11 +83,6 @@ body:
               - macOS
               - Linux
               - Other
-      validations:
-          required: true
-      visible:
-          - deployment-type
-          - 'Open Source (Self-hosted)'
 
     - type: dropdown
       id: browser
@@ -115,8 +95,6 @@ body:
               - Safari
               - Edge
               - Other
-      validations:
-          required: true
 
     - type: textarea
       id: context

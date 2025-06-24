@@ -64,8 +64,6 @@ import {
     SecretsManagerClient,
     SecretsManagerClientConfig
 } from '@aws-sdk/client-secrets-manager'
-import { checkStorage, updateStorageUsage } from './quotaUsage'
-import { UsageCacheManager } from '../UsageCacheManager'
 
 export const QUESTION_VAR_PREFIX = 'question'
 export const FILE_ATTACHMENT_PREFIX = 'file_attachment'
@@ -207,22 +205,6 @@ export const constructGraphs = (
 }
 
 /**
- * Get starting node and check if flow is valid
- * @param {INodeDependencies} nodeDependencies
- */
-export const getStartingNode = (nodeDependencies: INodeDependencies) => {
-    // Find starting node
-    const startingNodeIds = [] as string[]
-    Object.keys(nodeDependencies).forEach((nodeId) => {
-        if (nodeDependencies[nodeId] === 0) {
-            startingNodeIds.push(nodeId)
-        }
-    })
-
-    return { startingNodeIds }
-}
-
-/**
  * Get starting nodes and check if flow is valid
  * @param {INodeDependencies} graph
  * @param {string} endNodeId
@@ -256,6 +238,22 @@ export const getStartingNodes = (graph: INodeDirectedGraph, endNodeId: string) =
         .map(([id, _]) => id)
 
     return { startingNodeIds, depthQueue: depthQueueReversed }
+}
+
+/**
+ * Get starting node and check if flow is valid
+ * @param {INodeDependencies} nodeDependencies
+ */
+export const getStartingNode = (nodeDependencies: INodeDependencies) => {
+    // Find starting node
+    const startingNodeIds = [] as string[]
+    Object.keys(nodeDependencies).forEach((nodeId) => {
+        if (nodeDependencies[nodeId] === 0) {
+            startingNodeIds.push(nodeId)
+        }
+    })
+
+    return { startingNodeIds }
 }
 
 /**
@@ -503,8 +501,10 @@ type BuildFlowParams = {
     orgId?: string
     workspaceId?: string
     subscriptionId?: string
-    usageCacheManager?: UsageCacheManager
+    usageCacheManager?: any
     uploadedFilesContent?: string
+    updateStorageUsage?: (orgId: string, workspaceId: string, totalSize: number, usageCacheManager?: any) => void
+    checkStorage?: (orgId: string, subscriptionId: string, usageCacheManager: any) => Promise<any>
 }
 
 /**
@@ -539,7 +539,9 @@ export const buildFlow = async ({
     orgId,
     workspaceId,
     subscriptionId,
-    usageCacheManager
+    usageCacheManager,
+    updateStorageUsage,
+    checkStorage
 }: BuildFlowParams) => {
     const flowNodes = cloneDeep(reactFlowNodes)
 
@@ -1283,6 +1285,7 @@ export const findAvailableConfigs = (reactFlowNodes: IReactFlowNode[], component
     for (const flowNode of reactFlowNodes) {
         for (const inputParam of flowNode.data.inputParams) {
             let obj: IOverrideConfig | undefined
+
             if (inputParam.type === 'file') {
                 obj = {
                     node: flowNode.data.label,
@@ -1521,6 +1524,7 @@ export const decryptCredentialData = async (
 
     if (USE_AWS_SECRETS_MANAGER && secretsManagerClient) {
         try {
+            logger.info(`[server]: Reading AWS Secret: ${encryptedData}`)
             if (encryptedData.startsWith('FlowiseCredential_')) {
                 const command = new GetSecretValueCommand({ SecretId: encryptedData })
                 const response = await secretsManagerClient.send(command)
@@ -1824,7 +1828,7 @@ export const getUploadPath = (): string => {
         : path.join(getUserHome(), '.flowise', 'uploads')
 }
 
-export function generateId() {
+export const generateId = () => {
     return uuidv4()
 }
 
